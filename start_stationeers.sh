@@ -7,7 +7,7 @@
 set -e
 set -o pipefail
 
-# Print the user were currently running as
+# Print the user we're currently running as
 echo "Running as user: $(whoami)"
 
 # Define the exit handler
@@ -26,7 +26,7 @@ exit_handler()
 }
 
 # Trap specific signals and forward to the exit handler
-trap exit_handler SIGHUP SIGINT SIGQUIT SIGTERM
+trap 'exit_handler' SIGHUP SIGINT SIGQUIT SIGTERM
 
 # Install/update steamcmd
 echo ""
