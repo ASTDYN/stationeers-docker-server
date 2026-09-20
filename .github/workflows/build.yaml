@@ -1,0 +1,85 @@
+name: Build
+
+# Rebuilds and pushes the image to ghcr.io on every push to master.
+# The daily scheduled run only rebuilds when the upstream base image digest
+# has changed since the last successful build.
+
+on:
+  push:
+    branches: [master]
+  schedule:
+    - cron: "0 6 * * *"   # daily base-change check
+  workflow_dispatch:
+  repository_dispatch:
+    types: [base-image-updated]
+
+env:
+  BASE_IMAGE: ghcr.io/astdyn/stationeers-base:latest
+  IMAGE: ghcr.io/astdyn/stationeers-server
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # Login first so skopeo can inspect the (possibly private) base image.
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get base image digest
+        id: base
+        run: |
+          echo "digest=$(skopeo inspect --authfile ~/.docker/config.json docker://${{ env.BASE_IMAGE }} | jq -r .Digest)" >> $GITHUB_OUTPUT
+
+      # On scheduled runs, skip the build if we already built this exact base digest.
+      - name: Check whether this base was already built
+        if: github.event_name == 'schedule'
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/.base-built
+          key: base-${{ steps.base.outputs.digest }}
+          lookup-only: true
+
+      - name: Decide whether to build
+        id: decide
+        run: |
+          if [[ "${{ github.event_name }}" != "schedule" || "${{ steps.cache.outputs.cache-hit }}" != "true" ]]; then
+            echo "build=true" >> $GITHUB_OUTPUT
+          else
+            echo "Base image unchanged — skipping build."
+            echo "build=false" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.decide.outputs.build == 'true'
+
+      - uses: docker/setup-buildx-action@v3
+        if: steps.decide.outputs.build == 'true'
+
+      - name: Build and push
+        if: steps.decide.outputs.build == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE }}:latest
+
+      - name: Mark base digest as built
+        if: steps.decide.outputs.build == 'true' && github.event_name == 'schedule'
+        run: touch /tmp/.base-built
+
+      - name: Save base digest cache
+        if: steps.decide.outputs.build == 'true' && github.event_name == 'schedule'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/.base-built
+          key: base-${{ steps.base.outputs.digest }}

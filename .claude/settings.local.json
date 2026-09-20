@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:stationeers-wiki.com)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:stationeers.fandom.com)",
+      "WebFetch(domain:hub.docker.com)"
+    ]
+  }
+}
