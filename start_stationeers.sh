@@ -7,7 +7,7 @@
 set -e
 set -o pipefail
 
-# Print the user we're currently running as
+# Print the user were currently running as
 echo "Running as user: $(whoami)"
 
 # Define the exit handler
@@ -26,7 +26,7 @@ exit_handler()
 }
 
 # Trap specific signals and forward to the exit handler
-trap 'exit_handler' SIGHUP SIGINT SIGQUIT SIGTERM
+trap exit_handler SIGHUP SIGINT SIGQUIT SIGTERM
 
 # Install/update steamcmd
 echo ""
@@ -84,17 +84,17 @@ fi
 
 # Set the server name name
 if [ ! -z ${STATIONEERS_SERVER_NAME+x} ]; then
-	STATIONEERS_STARTUP_COMMAND="${STATIONEERS_STARTUP_COMMAND} ServerName '${STATIONEERS_SERVER_NAME}'"
+	STATIONEERS_STARTUP_COMMAND="${STATIONEERS_STARTUP_COMMAND} ServerName ${STATIONEERS_SERVER_NAME}"
 fi
 
 # Set the server password
 if [ ! -z ${STATIONEERS_SERVER_PASSWORD+x} ]; then
-	STATIONEERS_STARTUP_COMMAND="${STATIONEERS_STARTUP_COMMAND} ServerPassword '${STATIONEERS_SERVER_PASSWORD}'"
+	STATIONEERS_STARTUP_COMMAND="${STATIONEERS_STARTUP_COMMAND} ServerPassword ${STATIONEERS_SERVER_PASSWORD}"
 fi
 
 # Set the server admin password
 if [ ! -z ${STATIONEERS_SERVER_ADMIN_PASSWORD+x} ]; then
-	STATIONEERS_STARTUP_COMMAND="${STATIONEERS_STARTUP_COMMAND} ServerAuthSecret '${STATIONEERS_SERVER_ADMIN_PASSWORD}'"
+	STATIONEERS_STARTUP_COMMAND="${STATIONEERS_STARTUP_COMMAND} ServerAuthSecret ${STATIONEERS_SERVER_ADMIN_PASSWORD}"
 fi
 
 # Set the server max players
