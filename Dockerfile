@@ -60,7 +60,7 @@ EXPOSE 27500/udp
 EXPOSE 27015/udp
 
 # Define directories to take ownership of
-ENV CHOWN_DIRS="/app,/steamcmd"
+ENV CHOWN_DIRS="/app,/steamcmd,/logs"
 
 # Expose the volumes
 # VOLUME ["/steamcmd/stationeers"]
