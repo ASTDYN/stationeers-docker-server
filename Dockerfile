@@ -16,7 +16,7 @@ RUN apt-get update && \
 
 # Create and set the steamcmd folder as a volume
 RUN mkdir -p /steamcmd/stationeers
-RUN mkdir -p /steamcmd/stationeers/logs
+RUN mkdir -p /logs
 
 # Add the steamcmd installation script
 ADD install.txt /app/install.txt
