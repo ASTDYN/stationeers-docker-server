@@ -16,6 +16,7 @@ RUN apt-get update && \
 
 # Create and set the steamcmd folder as a volume
 RUN mkdir -p /steamcmd/stationeers
+RUN mkdir -p /steamcmd/stationeers/logs
 
 # Add the steamcmd installation script
 ADD install.txt /app/install.txt
@@ -44,7 +45,7 @@ ENV STATIONEERS_SERVER_MAX_PLAYERS="20"
 ENV STATIONEERS_SERVER_AUTO_SAVE="true"
 ENV STATIONEERS_SERVER_SAVE_INTERVAL="300"
 ENV STATIONEERS_SERVER_AUTO_PAUSE="true"
-ENV STATIONEERS_SERVER_STEAM_P2P="false"
+ENV STATIONEERS_SERVER_STEAM_P2P="true"
 ENV STATIONEERS_START_LOCAL_HOST="true"
 
 
