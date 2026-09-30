@@ -4,30 +4,30 @@ FROM --platform=$TARGETPLATFORM ghcr.io/astdyn/stationeers-base:latest
 
 LABEL maintainer="Didstopia <support@didstopia.com>"
 
-# Fixes apt-get warnings
 ARG DEBIAN_FRONTEND=noninteractive
 
-# Install dependencies
+ENV BEPINEX_VERSION=5.4.23.5
+ENV SLP_VERSION=0.5.1
+
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         libsdl2-2.0-0:i386 \
-        net-tools && \
-	rm -rf /var/lib/apt/lists/*
+        net-tools \
+        unzip && \
+    rm -rf /var/lib/apt/lists/*
 
-# Create and set the steamcmd folder as a volume
-RUN mkdir -p /steamcmd/stationeers
-RUN mkdir -p /logs
+RUN mkdir -p /steamcmd/stationeers /logs /app/bepinex /app/slp
 
-# Add the steamcmd installation script
 ADD install.txt /app/install.txt
-
-# Copy the startup script
 ADD start_stationeers.sh /app/start.sh
 
-# Set the current working directory
+RUN curl -fsSL "https://github.com/BepInEx/BepInEx/releases/download/v${BEPINEX_VERSION}/BepInEx_linux_x64_${BEPINEX_VERSION}.zip" \
+        -o /app/bepinex/bepinex.zip && \
+    curl -fsSL "https://github.com/StationeersLaunchPad/StationeersLaunchPad/releases/download/v${SLP_VERSION}/StationeersLaunchPad-server-v${SLP_VERSION}.zip" \
+        -o /app/slp/slp.zip
+
 WORKDIR /
 
-# Setup default environment variables for the server
 ENV STATIONEERS_SERVER_WORLD_NAME="docker"
 ENV STATIONEERS_SERVER_WORLD_ID="Mars2"
 ENV STATIONEERS_SERVER_DIFFICULTY="Normal"
@@ -48,22 +48,16 @@ ENV STATIONEERS_SERVER_AUTO_PAUSE="true"
 ENV STATIONEERS_SERVER_STEAM_P2P="true"
 ENV STATIONEERS_START_LOCAL_HOST="true"
 
+# Comma-separated Steam Workshop mod IDs to install on startup (e.g. "12345,67890")
+ENV WORKSHOP_MOD_IDS=""
 
-
-# Run as a non-root user by default
 ENV PGID=1000
 ENV PUID=1000
 
-# Expose necessary ports
 EXPOSE 27500/tcp
 EXPOSE 27500/udp
 EXPOSE 27015/udp
 
-# Define directories to take ownership of
 ENV CHOWN_DIRS="/app,/steamcmd,/logs"
 
-# Expose the volumes
-# VOLUME ["/steamcmd/stationeers"]
-
-# Start the server
 CMD ["bash", "/app/start.sh"]

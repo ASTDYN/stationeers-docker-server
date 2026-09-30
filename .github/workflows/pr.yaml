@@ -1,0 +1,40 @@
+name: PR check
+
+on:
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect changed paths
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            base:
+              - 'base/**'
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Only rebuild the base image locally when base/ files changed.
+      # The result stays in the Docker daemon (no push) and is reused by the
+      # server build step below via the shared image name.
+      - name: Build base image
+        if: steps.changes.outputs.base == 'true'
+        run: docker build -t ghcr.io/astdyn/stationeers-base:latest ./base
+
+      - name: Build server image
+        run: docker build -t ghcr.io/astdyn/stationeers-server:pr-${{ github.event.pull_request.number }} .
