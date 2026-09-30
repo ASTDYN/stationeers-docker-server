@@ -1,0 +1,133 @@
+name: Dependency update check
+
+# Checks StationeersLaunchPad for new releases and scrapes the SLP install
+# wiki for the BepInEx version it recommends, then compares both against
+# what is baked into the Dockerfile.
+#
+# When updates are found it opens a PR with the corrected versions and
+# enables auto-merge, so the PR squash-merges itself once the PR build
+# check passes — which triggers build.yaml to rebuild and push the image.
+#
+# Prerequisites:
+#   • Create a repo secret named PAT containing a Personal Access Token with
+#     "repo" scope.  The default GITHUB_TOKEN cannot trigger PR workflows
+#     (the pr.yaml build check), so without a PAT the PR is created but CI
+#     won't run on it automatically.
+#   • Enable "Allow auto-merge" in Settings › General for auto-merge to work.
+
+on:
+  schedule:
+    - cron: "0 8 1 * *"  # 1st of each month at 08:00 UTC
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT || secrets.GITHUB_TOKEN }}
+
+      - name: Read current versions from Dockerfile
+        id: current
+        run: |
+          echo "bepinex=$(grep -oP 'ENV BEPINEX_VERSION=\K\S+' Dockerfile)" >> $GITHUB_OUTPUT
+          echo "slp=$(grep -oP 'ENV SLP_VERSION=\K\S+' Dockerfile)"          >> $GITHUB_OUTPUT
+
+      - name: Get latest StationeersLaunchPad release
+        id: latest_slp
+        run: |
+          version=$(curl -fsSL "https://api.github.com/repos/StationeersLaunchPad/StationeersLaunchPad/releases/latest" \
+            | jq -r '.tag_name | ltrimstr("v")')
+          echo "version=$version" >> $GITHUB_OUTPUT
+
+      # Scrapes the SLP install docs for the BepInEx download URL and extracts
+      # the version number — this is the version SLP explicitly recommends.
+      - name: Get SLP-recommended BepInEx version from wiki
+        id: slp_bepinex
+        run: |
+          version=$(curl -fsSL "https://stationeerslaunchpad.github.io/docs/slp/install/" \
+            | grep -oP 'BepInEx/releases/download/v\K[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?' \
+            | head -1)
+          if [ -z "$version" ]; then
+            echo "::warning::Could not scrape BepInEx version from SLP wiki — page structure may have changed."
+          fi
+          echo "version=$version" >> $GITHUB_OUTPUT
+
+      - name: Open PR with updated versions
+        env:
+          GH_TOKEN:        ${{ secrets.PAT || secrets.GITHUB_TOKEN }}
+          CURRENT_BEPINEX: ${{ steps.current.outputs.bepinex }}
+          SLP_BEPINEX:     ${{ steps.slp_bepinex.outputs.version }}
+          CURRENT_SLP:     ${{ steps.current.outputs.slp }}
+          LATEST_SLP:      ${{ steps.latest_slp.outputs.version }}
+        run: |
+          bepinex_changed=false
+          slp_changed=false
+
+          if [ -n "$SLP_BEPINEX" ] && [ "$CURRENT_BEPINEX" != "$SLP_BEPINEX" ]; then
+            bepinex_changed=true
+          fi
+          if [ "$CURRENT_SLP" != "$LATEST_SLP" ]; then
+            slp_changed=true
+          fi
+
+          if [ "$bepinex_changed" = false ] && [ "$slp_changed" = false ]; then
+            echo "All dependencies are up to date."
+            exit 0
+          fi
+
+          NEW_BEPINEX="${SLP_BEPINEX:-$CURRENT_BEPINEX}"
+          BRANCH="deps/bepinex-${NEW_BEPINEX}-slp-${LATEST_SLP}"
+
+          # Skip if this exact branch already exists (PR already raised for these versions)
+          if git ls-remote --exit-code origin "refs/heads/$BRANCH" > /dev/null 2>&1; then
+            echo "Branch $BRANCH already exists; skipping."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+
+          if [ "$bepinex_changed" = true ]; then
+            sed -i "s/ENV BEPINEX_VERSION=.*/ENV BEPINEX_VERSION=${NEW_BEPINEX}/" Dockerfile
+          fi
+          if [ "$slp_changed" = true ]; then
+            sed -i "s/ENV SLP_VERSION=.*/ENV SLP_VERSION=${LATEST_SLP}/" Dockerfile
+          fi
+
+          git add Dockerfile
+          git commit -m "chore: update BepInEx to ${NEW_BEPINEX}, SLP to ${LATEST_SLP}"
+          git push origin "$BRANCH"
+
+          body="Automated dependency update:\n\n"
+          if [ "$bepinex_changed" = true ]; then
+            body+="- **BepInEx**: \`${CURRENT_BEPINEX}\` → \`${NEW_BEPINEX}\` _(SLP wiki recommendation)_\n"
+          fi
+          if [ "$slp_changed" = true ]; then
+            body+="- **StationeersLaunchPad**: \`${CURRENT_SLP}\` → \`${LATEST_SLP}\`\n"
+          fi
+          body+="\nThe PR build check will validate the image builds successfully. "
+          body+="Auto-merge is enabled — it will squash-merge once all checks pass, "
+          body+="which will trigger \`build.yaml\` to rebuild and push the image."
+
+          gh label create "dependency-update" \
+            --color "0075ca" \
+            --description "Dependency version update available" \
+            --force
+
+          gh pr create \
+            --title "chore: update BepInEx ${NEW_BEPINEX}, SLP ${LATEST_SLP}" \
+            --body "$(printf "$body")" \
+            --base master \
+            --label "dependency-update"
+
+          # Auto-merge once the PR build check passes.
+          # Requires "Allow auto-merge" in Settings › General.
+          gh pr merge --auto --squash \
+            || echo "::warning::Auto-merge could not be enabled — merge the PR manually once checks pass."

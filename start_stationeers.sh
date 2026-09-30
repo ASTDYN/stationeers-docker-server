@@ -1,16 +1,12 @@
 #!/usr/bin/env bash
 
-# Enable debugging
-#set -x
-
-# Setup error handling
 set -e
 set -o pipefail
 
-# Print the user we're currently running as
 echo "Running as user: $(whoami)"
 
-# Define the exit handler
+GAME_DIR="/steamcmd/stationeers"
+
 exit_handler()
 {
 	echo ""
@@ -18,128 +14,158 @@ exit_handler()
 	echo ""
 	kill -SIGINT "$child"
 	sleep 5
-
 	echo ""
 	echo "Terminating.."
 	echo ""
 	exit
 }
 
-# Trap specific signals and forward to the exit handler
 trap 'exit_handler' SIGHUP SIGINT SIGQUIT SIGTERM
 
-# Install/update steamcmd
+# ---------------------------------------------------------------------------
+# Install/update SteamCMD
+# ---------------------------------------------------------------------------
 echo ""
 echo "Installing/updating steamcmd.."
 echo ""
 curl -s http://media.steampowered.com/installer/steamcmd_linux.tar.gz | tar -v -C /steamcmd -zx
 
-# Check that Stationeers exists in the first place
-if [ ! -f "/steamcmd/stationeers/rocketstation_DedicatedServer.x86_64" ]; then
-	# Install Stationeers from install.txt
+# ---------------------------------------------------------------------------
+# Install/update Stationeers dedicated server
+# ---------------------------------------------------------------------------
+if [ ! -f "$GAME_DIR/rocketstation_DedicatedServer.x86_64" ]; then
 	echo ""
 	echo "Installing Stationeers.."
 	echo ""
-	bash /steamcmd/steamcmd.sh +runscript /app/install.txt
 else
-	# Install Stationeers from install.txt
 	echo ""
 	echo "Updating Stationeers.."
 	echo ""
-	bash /steamcmd/steamcmd.sh +runscript /app/install.txt
+fi
+bash /steamcmd/steamcmd.sh +runscript /app/install.txt
+
+# ---------------------------------------------------------------------------
+# Install BepInEx (re-installs when BEPINEX_VERSION changes in image)
+# ---------------------------------------------------------------------------
+if [ "$(cat "$GAME_DIR/.bepinex_version" 2>/dev/null)" != "$BEPINEX_VERSION" ]; then
+	echo ""
+	echo "Installing BepInEx $BEPINEX_VERSION.."
+	echo ""
+	unzip -o /app/bepinex/bepinex.zip -d "$GAME_DIR"
+	sed -i 's|^executable_name=.*|executable_name="rocketstation_DedicatedServer.x86_64"|' "$GAME_DIR/run_bepinex.sh"
+	chmod +x "$GAME_DIR/run_bepinex.sh"
+	echo "$BEPINEX_VERSION" > "$GAME_DIR/.bepinex_version"
 fi
 
-# Remove extra whitespace from startup command
+# ---------------------------------------------------------------------------
+# Install StationeersLaunchPad (re-installs when SLP_VERSION changes in image)
+# ---------------------------------------------------------------------------
+if [ "$(cat "$GAME_DIR/.slp_version" 2>/dev/null)" != "$SLP_VERSION" ]; then
+	echo ""
+	echo "Installing StationeersLaunchPad $SLP_VERSION.."
+	echo ""
+	mkdir -p "$GAME_DIR/BepInEx/plugins"
+	unzip -o /app/slp/slp.zip -d "$GAME_DIR/BepInEx/plugins"
+	echo "$SLP_VERSION" > "$GAME_DIR/.slp_version"
+fi
+
+# ---------------------------------------------------------------------------
+# Download Workshop mods (if WORKSHOP_MOD_IDS is set)
+# ---------------------------------------------------------------------------
+if [ -n "${WORKSHOP_MOD_IDS:-}" ]; then
+	echo ""
+	echo "Downloading Workshop mods: $WORKSHOP_MOD_IDS"
+	echo ""
+	WORKSHOP_SCRIPT="$(mktemp /tmp/workshop_XXXXXX.txt)"
+	{
+		printf "@ShutdownOnFailedCommand 1\n"
+		printf "@NoPromptForPassword 1\n"
+		printf "login anonymous\n"
+		IFS=',' read -ra MOD_IDS <<< "$WORKSHOP_MOD_IDS"
+		for mod_id in "${MOD_IDS[@]}"; do
+			mod_id="${mod_id// /}"
+			printf "workshop_download_item 544550 %s\n" "$mod_id"
+		done
+		printf "quit\n"
+	} > "$WORKSHOP_SCRIPT"
+	bash /steamcmd/steamcmd.sh +runscript "$WORKSHOP_SCRIPT"
+	rm -f "$WORKSHOP_SCRIPT"
+fi
+
+# ---------------------------------------------------------------------------
+# Build startup command
+# ---------------------------------------------------------------------------
 STATIONEERS_STARTUP_COMMAND=$(echo "-file start $STATIONEERS_SERVER_WORLD_NAME $STATIONEERS_SERVER_WORLD_ID $STATIONEERS_SERVER_DIFFICULTY $STATIONEERS_SERVER_START_CONDITION $STATIONEERS_SERVER_START_LOCATION" | tr -s " ")
 
-# Set server log file
-if [ ! -z ${STATIONEERS_SERVER_LOGS+x} ]; then
+if [ -n "${STATIONEERS_SERVER_LOGS+x}" ]; then
 	STATIONEERS_STARTUP_COMMAND="${STATIONEERS_STARTUP_COMMAND} -logFile ${STATIONEERS_SERVER_LOGS}"
 fi
 
-# Set server startup commands
-if [ ! -z ${STATIONEERS_SERVER_STARTUP_ARGUMENTS+x} ]; then
+if [ -n "${STATIONEERS_SERVER_STARTUP_ARGUMENTS+x}" ]; then
 	STATIONEERS_STARTUP_COMMAND="${STATIONEERS_STARTUP_COMMAND} ${STATIONEERS_SERVER_STARTUP_ARGUMENTS} -settings"
 fi
 
-# Set server visible
-if [ ! -z ${STATIONEERS_SERVER_VISIBLE+x} ]; then
+if [ -n "${STATIONEERS_SERVER_VISIBLE+x}" ]; then
 	STATIONEERS_STARTUP_COMMAND="${STATIONEERS_STARTUP_COMMAND} ServerVisible ${STATIONEERS_SERVER_VISIBLE}"
 fi
 
-# Set the game port
-if [ ! -z ${STATIONEERS_SERVER_GAME_PORT+x} ]; then
+if [ -n "${STATIONEERS_SERVER_GAME_PORT+x}" ]; then
 	STATIONEERS_STARTUP_COMMAND="${STATIONEERS_STARTUP_COMMAND} GamePort ${STATIONEERS_SERVER_GAME_PORT}"
 fi
 
-# Set the query/update port
-if [ ! -z ${STATIONEERS_SERVER_UPDATE_PORT+x} ]; then
+if [ -n "${STATIONEERS_SERVER_UPDATE_PORT+x}" ]; then
 	STATIONEERS_STARTUP_COMMAND="${STATIONEERS_STARTUP_COMMAND} UpdatePort ${STATIONEERS_SERVER_UPDATE_PORT}"
 fi
 
-# Set the UPNP Enabled
-if [ ! -z ${STATIONEERS_SERVER_UPNP_ENABLED+x} ]; then
+if [ -n "${STATIONEERS_SERVER_UPNP_ENABLED+x}" ]; then
 	STATIONEERS_STARTUP_COMMAND="${STATIONEERS_STARTUP_COMMAND} UPNPEnabled ${STATIONEERS_SERVER_UPNP_ENABLED}"
 fi
 
-# Set the server name name
-if [ ! -z ${STATIONEERS_SERVER_NAME+x} ]; then
+if [ -n "${STATIONEERS_SERVER_NAME+x}" ]; then
 	STATIONEERS_STARTUP_COMMAND="${STATIONEERS_STARTUP_COMMAND} ServerName ${STATIONEERS_SERVER_NAME}"
 fi
 
-# Set the server password
-if [ ! -z ${STATIONEERS_SERVER_PASSWORD+x} ]; then
+if [ -n "${STATIONEERS_SERVER_PASSWORD+x}" ]; then
 	STATIONEERS_STARTUP_COMMAND="${STATIONEERS_STARTUP_COMMAND} ServerPassword ${STATIONEERS_SERVER_PASSWORD}"
 fi
 
-# Set the server admin password
-if [ ! -z ${STATIONEERS_SERVER_ADMIN_PASSWORD+x} ]; then
+if [ -n "${STATIONEERS_SERVER_ADMIN_PASSWORD+x}" ]; then
 	STATIONEERS_STARTUP_COMMAND="${STATIONEERS_STARTUP_COMMAND} ServerAuthSecret ${STATIONEERS_SERVER_ADMIN_PASSWORD}"
 fi
 
-# Set the server max players
-if [ ! -z ${STATIONEERS_SERVER_MAX_PLAYERS+x} ]; then
+if [ -n "${STATIONEERS_SERVER_MAX_PLAYERS+x}" ]; then
 	STATIONEERS_STARTUP_COMMAND="${STATIONEERS_STARTUP_COMMAND} ServerMaxPlayers ${STATIONEERS_SERVER_MAX_PLAYERS}"
 fi
 
-# Set the auto-save
-if [ ! -z ${STATIONEERS_SERVER_AUTO_SAVE+x} ]; then
+if [ -n "${STATIONEERS_SERVER_AUTO_SAVE+x}" ]; then
 	STATIONEERS_STARTUP_COMMAND="${STATIONEERS_STARTUP_COMMAND} AutoSave ${STATIONEERS_SERVER_AUTO_SAVE}"
 fi
 
-# Set the auto-save interval
-if [ ! -z ${STATIONEERS_SERVER_SAVE_INTERVAL+x} ]; then
+if [ -n "${STATIONEERS_SERVER_SAVE_INTERVAL+x}" ]; then
 	STATIONEERS_STARTUP_COMMAND="${STATIONEERS_STARTUP_COMMAND} SaveInterval ${STATIONEERS_SERVER_SAVE_INTERVAL}"
 fi
 
-# Set the Auto pause server
-if [ ! -z ${STATIONEERS_SERVER_AUTO_PAUSE+x} ]; then
+if [ -n "${STATIONEERS_SERVER_AUTO_PAUSE+x}" ]; then
 	STATIONEERS_STARTUP_COMMAND="${STATIONEERS_STARTUP_COMMAND} AutoPauseServer ${STATIONEERS_SERVER_AUTO_PAUSE}"
 fi
 
-# Set the steam p2p
-if [ ! -z ${STATIONEERS_SERVER_STEAM_P2P+x} ]; then
+if [ -n "${STATIONEERS_SERVER_STEAM_P2P+x}" ]; then
 	STATIONEERS_STARTUP_COMMAND="${STATIONEERS_STARTUP_COMMAND} UseSteamP2P ${STATIONEERS_SERVER_STEAM_P2P}"
 fi
 
-# Set the StartLocalHost
-if [ ! -z ${STATIONEERS_START_LOCAL_HOST+x} ]; then
+if [ -n "${STATIONEERS_START_LOCAL_HOST+x}" ]; then
 	STATIONEERS_STARTUP_COMMAND="${STATIONEERS_STARTUP_COMMAND} StartLocalHost ${STATIONEERS_START_LOCAL_HOST}"
 fi
 
+# ---------------------------------------------------------------------------
+# Launch server via BepInEx
+# ---------------------------------------------------------------------------
+cd "$GAME_DIR" || exit
 
-
-
-# Set the working directory
-cd /steamcmd/stationeers || exit
-
-# Run the server
 echo ""
-echo "Starting Stationeers with arguments: ${STATIONEERS_STARTUP_COMMAND}"
+echo "Starting Stationeers with BepInEx: ${STATIONEERS_STARTUP_COMMAND}"
 echo ""
-./rocketstation_DedicatedServer.x86_64 \
-  ${STATIONEERS_STARTUP_COMMAND} \
-  2>&1 &
+./run_bepinex.sh ${STATIONEERS_STARTUP_COMMAND} 2>&1 &
 
 child=$!
 wait "$child"
