@@ -70,29 +70,6 @@ if [ "$(cat "$GAME_DIR/.slp_version" 2>/dev/null)" != "$SLP_VERSION" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Download Workshop mods (if WORKSHOP_MOD_IDS is set)
-# ---------------------------------------------------------------------------
-if [ -n "${WORKSHOP_MOD_IDS:-}" ]; then
-	echo ""
-	echo "Downloading Workshop mods: $WORKSHOP_MOD_IDS"
-	echo ""
-	WORKSHOP_SCRIPT="$(mktemp /tmp/workshop_XXXXXX.txt)"
-	{
-		printf "@ShutdownOnFailedCommand 1\n"
-		printf "@NoPromptForPassword 1\n"
-		printf "login anonymous\n"
-		IFS=',' read -ra MOD_IDS <<< "$WORKSHOP_MOD_IDS"
-		for mod_id in "${MOD_IDS[@]}"; do
-			mod_id="${mod_id// /}"
-			printf "workshop_download_item 544550 %s\n" "$mod_id"
-		done
-		printf "quit\n"
-	} > "$WORKSHOP_SCRIPT"
-	bash /steamcmd/steamcmd.sh +runscript "$WORKSHOP_SCRIPT"
-	rm -f "$WORKSHOP_SCRIPT"
-fi
-
-# ---------------------------------------------------------------------------
 # Build startup command
 # ---------------------------------------------------------------------------
 STATIONEERS_STARTUP_COMMAND=$(echo "-file start $STATIONEERS_SERVER_WORLD_NAME $STATIONEERS_SERVER_WORLD_ID $STATIONEERS_SERVER_DIFFICULTY $STATIONEERS_SERVER_START_CONDITION $STATIONEERS_SERVER_START_LOCATION" | tr -s " ")
