@@ -6,7 +6,7 @@ LABEL maintainer="Didstopia <support@didstopia.com>"
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-ENV BEPINEX_VERSION=5.4.23.3
+ENV BEPINEX_VERSION=5.4.23.5
 ENV SLP_VERSION=0.5.1
 
 RUN apt-get update && \
