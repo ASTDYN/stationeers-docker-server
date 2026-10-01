@@ -11,6 +11,7 @@ ENV SLP_VERSION=0.5.1
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
+        file \
         libsdl2-2.0-0:i386 \
         net-tools \
         unzip && \
@@ -49,7 +50,7 @@ ENV STATIONEERS_SERVER_STEAM_P2P="true"
 ENV STATIONEERS_START_LOCAL_HOST="true"
 
 # Comma-separated Steam Workshop mod IDs to install on startup (e.g. "12345,67890")
-ENV WORKSHOP_MOD_IDS=""
+ENV WORKSHOP_MOD_IDS="3811071109"
 
 ENV PGID=1000
 ENV PUID=1000
